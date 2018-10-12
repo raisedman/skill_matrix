@@ -1,0 +1,51 @@
+table.matrix {
+    font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+    font-size: 14px;
+    border-radius: 10px;
+    border-spacing: 0;
+    text-align: center;
+}
+
+table.matrix th {
+    background: #BCEBDD;
+    color: black;
+    text-shadow: 0 1px 1px #2D2020;
+    padding: 10px 20px;
+}
+
+table.matrix th, td {
+    border-style: solid;
+    border-width: 0 1px 1px 0;
+    border-color: white;
+}
+
+table.matrix th:first-child, td:first-child {
+    text-align: left;
+}
+
+table.matrix th:first-child {
+    border-top-left-radius: 10px;
+}
+
+table.matrix th:last-child {
+    border-top-right-radius: 10px;
+    border-right: none;
+}
+
+table.matrix td {
+    padding: 10px 20px;
+    background: #F8E391;
+    text-align: center;
+}
+
+table.matrix tr:last-child td:first-child {
+    border-radius: 0 0 0 10px;
+}
+
+table.matrix tr:last-child td:last-child {
+    border-radius: 0 0 10px 0;
+}
+
+table.matrix tr td:last-child {
+    border-right: none;
+}
