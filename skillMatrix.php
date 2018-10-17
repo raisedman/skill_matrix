@@ -177,29 +177,17 @@ class SkillMatrix {
 			'description'         => 'Skills of developer',
 			'public'              => true,
 			'publicly_queryable'  => null,
-			// зависит от public
 			'exclude_from_search' => null,
-			// зависит от public
 			'show_ui'             => null,
-			// зависит от public
 			'show_in_menu'        => null,
-			// показывать ли в меню адмнки
 			'show_in_admin_bar'   => null,
-			// по умолчанию значение show_in_menu
 			'show_in_nav_menus'   => null,
-			// зависит от public
 			'show_in_rest'        => null,
-			// добавить в REST API. C WP 4.7
 			'rest_base'           => null,
-			// $post_type. C WP 4.7
 			'menu_position'       => null,
 			'menu_icon'           => null,
-			//'capability_type'   => 'post',
-			//'capabilities'      => 'post', // массив дополнительных прав для этого типа записи
-			//'map_meta_cap'      => null, // Ставим true чтобы включить дефолтный обработчик специальных прав
 			'hierarchical'        => false,
 			'supports'            => array( 'title', 'editor' ),
-			// 'title','editor','author','thumbnail','excerpt','trackbacks','custom-fields','comments','revisions','page-attributes','post-formats'
 			'taxonomies'          => array( 'skillcategory' ),
 			'has_archive'         => false,
 			'rewrite'             => true,
@@ -210,7 +198,6 @@ class SkillMatrix {
 	public function create_taxonomy() {
 		register_taxonomy( 'skillcategory', array( 'skill' ), array(
 			'label'                 => '',
-			// определяется параметром $labels->name
 			'labels'                => array(
 				'name'              => __( 'Category of skills' ),
 				'singular_name'     => __( 'Category of skill' ),
@@ -226,34 +213,22 @@ class SkillMatrix {
 				'menu_name'         => __( 'Skill category' ),
 			),
 			'description'           => 'Category of developer skills',
-			// описание таксономии
 			'public'                => true,
 			'publicly_queryable'    => null,
-			// равен аргументу public
 			'show_in_nav_menus'     => null,
-			// равен аргументу public
 			'show_ui'               => null,
-			// равен аргументу public
 			'show_in_menu'          => null,
-			// равен аргументу show_ui
 			'show_tagcloud'         => null,
-			// равен аргументу show_ui
 			'show_in_rest'          => null,
-			// добавить в REST API
 			'rest_base'             => null,
-			// $taxonomy
 			'hierarchical'          => false,
 			'update_count_callback' => '',
 			'rewrite'               => true,
-			//'query_var'             => $taxonomy, // название параметра запроса
 			'capabilities'          => array(),
 			'meta_box_cb'           => null,
-			// callback функция. Отвечает за html код метабокса (с версии 3.8): post_categories_meta_box или post_tags_meta_box. Если указать false, то метабокс будет отключен вообще
 			'show_admin_column'     => false,
-			// Позволить или нет авто-создание колонки таксономии в таблице ассоциированного типа записи. (с версии 3.5)
 			'_builtin'              => false,
 			'show_in_quick_edit'    => null,
-			// по умолчанию значение show_ui
 		) );
 
 	}

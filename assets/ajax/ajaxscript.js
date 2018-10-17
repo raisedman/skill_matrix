@@ -22,8 +22,7 @@ jQuery(document).ready(function ($) {
       action: 'hello',
     }
 
-    data.developers.find(
-      developer => developer.id === id).skills[skill] = level
+    data.developers.find(developer => developer.id === id).skills[skill] = level
 
     $.post(ajaxurl, params, function (response) {
       //alert(response);
