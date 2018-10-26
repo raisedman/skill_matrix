@@ -280,10 +280,7 @@ class SkillMatrix {
 	}
 
 	public function admin_menu() {
-		add_menu_page( 'Skills Matrix', 'SkillsMatrix', 'delete_posts', 'skills-matrix', array(
-			$this,
-			'skills_matrix_show'
-		), '', 4 );
+		add_menu_page( 'Skills Matrix', 'SkillsMatrix', 'delete_posts', 'skills-matrix', array($this,'skills_matrix_show'), '', 4 );
 	}
 
 
