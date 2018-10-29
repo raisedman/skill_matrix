@@ -22,6 +22,7 @@ class SkillMatrix {
 		add_action( 'user_new_form', array( $this, 'update_user_meta' ) );
 		$this->add_role();
 		add_action( 'admin_menu', array( $this, 'admin_menu' ) );
+		add_action( 'admin_menu', array( $this, 'register_submenu' ) );
 		add_action( 'wp_ajax_hello', array( $this, 'processing_ajax' ) );
 		add_action( 'wp_ajax_addposition', array( $this, 'add_position_developer' ) );
 		add_action( 'wp_ajax_developers', array( $this, 'send_developers' ) );
@@ -113,11 +114,11 @@ class SkillMatrix {
 
 	public function register_script_admin() {
 		wp_register_style( 'matrix-style', plugins_url() . '/skillMatrix/assets/css/style.css' );
-		wp_register_script( 'ajax_admin', plugins_url() . '/skillMatrix/assets/ajax/ajaxscript.js', array( 'jquery' ) );
+		wp_register_script( 'ajax_admin', plugins_url() . '/skillMatrix/assets/js/ajax/ajaxscript.js', array( 'jquery' ) );
 	}
 
 	public function enqueue_script_user() {
-		wp_enqueue_script( 'ajax_user', plugins_url() . '/skillMatrix/assets/ajax/ajaxscript_user.js', array( 'jquery' ) );
+		wp_enqueue_script( 'ajax_user', plugins_url() . '/skillMatrix/assets/js/ajax/ajaxscript_user.js', array( 'jquery' ) );
 		wp_localize_script( 'ajax_user', 'myPlugin', array(
 			'ajaxurl' => admin_url( 'admin-ajax.php' ),
 		) );
@@ -142,8 +143,7 @@ class SkillMatrix {
 		if ( ! current_user_can( 'edit_user', $user_id ) ) {
 			return false;
 		}
-		update_usermeta( $user_id, 'position', $_POST['position'] );
-
+		update_user_meta( $user_id, 'position', $_POST['position'] );
 	}
 
 	public function is_user_role( $role, $user_id = null ) {
@@ -170,7 +170,7 @@ class SkillMatrix {
 				'view_item'          => __( 'View Skill' ),
 				'search_items'       => __( 'Искать ____' ),
 				'not_found'          => __( 'Not found' ),
-				'not_found_in_trash' => __( 'Не найдено в корзине' ),
+				'not_found_in_trash' => __( 'Not found in trash' ),
 				'parent_item_colon'  => __( '' ),
 				'menu_name'          => __( 'Skills' ),
 			),
@@ -280,9 +280,98 @@ class SkillMatrix {
 	}
 
 	public function admin_menu() {
-		add_menu_page( 'Skills Matrix', 'SkillsMatrix', 'delete_posts', 'skills-matrix', array($this,'skills_matrix_show'), '', 4 );
+		add_menu_page( 'Skills Matrix', 'SkillsMatrix', 'delete_posts', 'skills-matrix', array(
+			$this,
+			'skills_matrix_show'
+		), '', 4 );
 	}
 
+	public function register_submenu() {
+		add_submenu_page( 'skills-matrix', 'Form user', 'Add user', 'manage_options',
+			'my-custom-submenu-page', array( $this, 'form_add_developer' ) );
+	}
+
+	public function form_add_developer() {
+		if ( ! current_user_can( 'publish_posts' ) ) {
+			return '';
+		}
+		wp_enqueue_style( 'matrix-style' );
+		if ( ! empty( $_POST['hs_insert_developer'] ) ) {
+			$post_data = array(
+				'post_type'    => 'post_type_name',
+				'post_title'   => wp_strip_all_tags( $_POST['post_title'] ),
+				'post_content' => $_POST['description'],
+				'tax_input'    => array( 'taxonomy' => [ $_POST['model'] ] ),
+				'post_status'  => 'draft',
+				'post_author'  => get_current_user_id()
+			);
+			// Вставляем запись в базу данных
+			if ( $post_data['post_title'] ) {
+				$post_id = wp_insert_post( $post_data );
+
+				if ( is_wp_error( $post_id ) ) {
+					wp_safe_redirect( add_query_arg( array( 'error' => '1' ), get_permalink() ) );
+					exit;
+				} else {
+					wp_safe_redirect( add_query_arg( array( 'successfull' => '1' ), get_permalink() ) );
+					exit;
+				}
+			}
+		}
+		$args  = array(
+			'taxonomy'   => 'taxonomy',
+			'hide_empty' => false,
+			'orderby'    => 'name',
+			'order'      => 'ASC',
+		);
+		$terms = get_terms( $args );
+		?>
+        <div class="developerForm">
+            <form method="post" action="">
+                    <h3 style="color:white">Add developer</h3>
+                <?php if ( ! empty( $_GET['successfull'] ) ) { ?>
+                    <span style="color:green"><?php _e( 'Successfully Added' ) ?></span>
+				<?php } elseif ( ! empty( $_GET['error'] ) ) { ?>
+                    <span style="color:red"><?php _e( 'Error' ) ?></span>
+				<?php } ?>
+                <div class="add_developer_element">
+                    <label for="nameDev">Username</label>
+                    <input type="text" id="nameDev">
+                </div>
+                <div class="add_developer_element">
+                    <label for="emailDev">Email</label>
+                    <input type="text" id="emailDev">
+                </div>
+                <div class="add_developer_element">
+                    <label for="firstNameDev">First Name</label>
+                    <input type="text" id="firstNameDev">
+                </div>
+                <div class="add_developer_element">
+                    <label for="lastNameDev">Last Name</label>
+                    <input type="text" id="lastNameDev">
+                </div>
+                <div class="add_developer_element">
+                    <label for="passwordDev">Password</label>
+                    <input type="password" id="passwordDev">
+                    <button class="showPass" type="button">&#128065;</button>
+                </div>
+                <div>
+                    <label>Раскрывающийся список</label>
+                    <select>
+                        <option>Lagouste</option>
+                        <option>Soubcart</option>
+                        <option>Aboutso</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Кнопка</label>
+                    <button class="send" type="submit">Отправить</button>
+                    <button class="send" type="reset">Сбросить</button>
+                </div>
+            </form>
+        </div>
+		<?php
+	}
 
 	public function register_show_skill() {
 
@@ -376,7 +465,7 @@ class SkillMatrix {
 			<?php
 			?>
         </p>
-        <div class="div-filter" style="overflow: hidden; margin-bottom: 20px;">
+        <div class="div-filter" style="overflow: hidden; padding-top: 10px; margin-bottom: 20px;">
             <div class="filter">
                 <label for="all_skills_developers"
                        style="display: block;font-size: 15px; font-style: italic">Skills </label>
@@ -421,7 +510,8 @@ class SkillMatrix {
                 </select>
             </div>
             <div class="filter">
-                <button id="button_developers" style="margin-top: 10px; margin-right: 10px; width:50px">Show Dev</button>
+                <button id="button_developers" style="margin-top: 10px; margin-right: 10px; width:50px">Show Dev
+                </button>
             </div>
 			<?php
 			$positons = [];
@@ -440,7 +530,7 @@ class SkillMatrix {
             </div>
 
             <div class="filter">
-            <button class="refresh" style="width:50px">Drop filter</button>
+                <button class="refresh" style="width:50px">Drop filter</button>
             </div>
         </div>
 
@@ -479,7 +569,7 @@ class SkillMatrix {
             <tr>
                 <td>Position</td>
                 <td></td>
-				<?
+				<?php
 				for ( $i = 0; $i < count( $arrayDev ); $i ++ ) {   //add position of developer
 					?>
                     <td><?php if ( ! empty( $meta = get_user_meta( $arrayDev[ $i ], 'position', true ) ) ) {
