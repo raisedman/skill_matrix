@@ -5,145 +5,233 @@ Plugin Name: Skill Matrix
 Description: Создать матрицу скиллов разработчиков
 Version: 1.0
 */
+define( 'um_url', plugin_dir_url( __FILE__ ) );
 
 class SkillMatrix {
-
 	public function __construct() {
 
 		add_action( 'admin_head', array( $this, 'register_script_admin' ) );
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_script_user' ) );
 		add_action( 'init', array( $this, 'regist_post' ) );
 		add_action( 'init', array( $this, 'create_taxonomy' ) );
+		register_activation_hook( __FILE__, array( $this, 'add_role' ) );
 		add_action( 'show_user_profile', array( $this, 'my_show_extra_profile_fields' ) );
 		add_action( 'edit_user_profile', array( $this, 'my_show_extra_profile_fields' ) );
-		add_action( 'user_new_form', array( $this, 'my_show_extra_profile_fields' ) );
 		add_action( 'personal_options_update', array( $this, 'update_user_meta' ) );
 		add_action( 'edit_user_profile_update', array( $this, 'update_user_meta' ) );
 		add_action( 'user_new_form', array( $this, 'update_user_meta' ) );
-		$this->add_role();
+		add_action( 'admin_init', array( $this, 'add_developer' ) );
+		add_action( 'admin_init', array( $this, 'add_skill' ) );
+		add_action( 'admin_init', array( $this, 'add_category' ) );
 		add_action( 'admin_menu', array( $this, 'admin_menu' ) );
 		add_action( 'admin_menu', array( $this, 'register_submenu' ) );
-		add_action( 'wp_ajax_hello', array( $this, 'processing_ajax' ) );
+		add_action( 'wp_ajax_changelevel', array( $this, 'processing_ajax' ) );
 		add_action( 'wp_ajax_addposition', array( $this, 'add_position_developer' ) );
-		add_action( 'wp_ajax_developers', array( $this, 'send_developers' ) );
+		add_action( 'wp_ajax_developers', array( $this, 'send_all_developers' ) );
 		add_action( 'wp_ajax_categories', array( $this, 'send_category' ) );
-		add_action( 'admin_head', array( $this, 'action_js' ) );
+		add_action( 'wp_ajax_senddev', array( $this, 'send_data_dev' ) );
 		add_shortcode( 'show_skill', array( $this, 'register_show_skill' ) );
+	}
+
+	public function send_category() {
+		$posts = get_posts( array(
+			'tax_query'      => array(
+				array(
+					'taxonomy' => 'skillcategory',
+					'field'    => 'name',
+					'terms'    => $_POST['term']
+				)
+			),
+			'post_type'      => 'skill',
+			'posts_per_page' => - 1
+		) );
+		ob_start(); ?>
+        <label for="all_skills_developers"
+               style="display: block;font-size: 15px; font-style: italic">Skills </label>
+        <select id="all_skills_developers" style="width:100px; margin-bottom: 10px;">
+            <option value="">Select skill</option>
+			<?php foreach ( $posts as $post ) { ?>
+                <option value="<?= $post->ID ?>"><?= $post->post_title ?></option>
+			<?php } ?>
+        </select>
+		<?php
+		if ( $html = ob_get_clean() ) {
+			wp_send_json_success( $html );
+		} else {
+			wp_send_json_error();
+		}
 
 	}
 
-
-	public function send_developers() {
-		$arrayJson  = array();
-		$developers = get_users( array( 'role' => 'developer' ) );
-		$arrayDev   = [];
+	public function send_data_dev() {  //create json for template of table
+		$arrayJson = array();
+		if ( ! empty( $_POST['position'] ) ) {
+			$developers = get_users(
+				array(
+					'meta_key'    => 'position',
+					'meta_value'  => $_POST['position'],
+					'number'      => - 1,
+					'count_total' => false
+				)
+			);
+		} elseif ( empty( $_POST['developers'] ) ) {
+			$developers = get_users( array( 'role' => 'developer' ) );
+			$developers = (array) $developers;
+		} else {
+			$toarrayDev = (array) $_POST['developers'];
+			$developers = array();
+			foreach ( $toarrayDev as $dev ) {
+				$developers[] = get_user_by( 'id', $dev );
+			}
+		}
+		$arrayDev         = array();
+		$arrayPosition    = array();
+		$arrayObjCategory = array();
 		foreach ( $developers as $developer ) {
-			$arrayDev[] = $developer->ID;
+			$user            = get_user_by( 'id', $developer->ID );
+			$login           = $user->display_name;
+			$arrayDev[]      = $login;
+			$position        = get_user_meta( $developer->ID, 'position', true );
+			$arrayPosition[] = $position;
 		}
-		foreach ( $arrayDev as $iduser ) {
-			$user        = get_user_by( 'id', $iduser );
-			$login       = $user->user_login;
-			$returnArray = array( 'name' => $login );
-			$returnArray += [ 'id' => $iduser ];
-			$returnArray += [ 'position' => get_user_meta( $iduser, 'position', true ) ];
-			$allPosts    = get_posts( array(
-				'post_type'      => 'skill',
-				'posts_per_page' => - 1
-			) );
-			$skills      = array();
-			foreach ( $allPosts as $post ) {
-				$skills += [ $post->post_title => get_user_meta( $iduser, $post->post_title, true ) ];
+		if ( empty( $_POST['category'] ) ) {
+			$args  = array(
+				'taxonomy'   => 'skillcategory',
+				'hide_empty' => false,
+				'orderby'    => 'name',
+				'order'      => 'ASC',
+			);
+			$terms = get_terms( $args );
+			if ( is_object( $terms ) ) {
+				$terms = (array) $terms;
 			}
-			$returnArray += [ 'skills' => $skills ];
-			$arrayJson[] = $returnArray;
+		} else {
+			$terms   = array();
+			$terms[] = get_term_by( 'name', $_POST['category'], 'skillcategory' );
 		}
-		$arrayReturn     = [ 'developers' => $arrayJson ];
-		$arrayCategories = [];
-		$args            = array(
-			'taxonomy'   => 'skillcategory',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-			'order'      => 'ASC',
-		);
-		$terms           = get_terms( $args );
-
-		foreach ( $terms as $category ) {
-			$arraySkill = [];
-
-			$loop = get_posts( array(
-				'tax_query'      => array(
-					array(
-						'taxonomy' => 'skillcategory',
-						'field'    => 'name',
-						'terms'    => $category->name
-					)
-				),
-				'post_type'      => 'skill',
-				'posts_per_page' => - 1
-			) );
-			foreach ( $loop as $skil ) {
-				$arraySkill[] = $skil->post_title;
+		foreach ( $terms as $term ) {
+			if ( $term->count > 0 ) {
+				$objCat      = [ 'category' => $term->name ];
+				$loop        = get_posts( array(
+					'tax_query'      => array(
+						array(
+							'taxonomy' => 'skillcategory',
+							'field'    => 'name',
+							'terms'    => $term->name
+						)
+					),
+					'post_type'      => 'skill',
+					'posts_per_page' => - 1
+				) );
+				$objSkills   = array();
+				$arraySkills = array();
+				if ( empty( $_POST['skill'] ) ) {
+					foreach ( $loop as $post ) {
+						$objSkills['skill_name'] = $post->post_title;
+						$levelDeveloper          = array();
+						$idDevelopers            = array();
+						foreach ( $developers as $developer ) {
+							$levelDeveloper[] = get_user_meta( $developer->ID, $post->post_title, true );
+							$idDevelopers[]   = $developer->ID;
+						}
+						$objSkills['developer_level'] = $levelDeveloper;
+						$objSkills['developer_id']    = $idDevelopers;
+						$arraySkills[]                = $objSkills;
+					}
+				} else {
+					$post                    = get_post( $_POST['skill'], OBJECT );
+					$objSkills['skill_name'] = $post->post_title;
+					$levelDeveloper          = array();
+					$idDevelopers            = array();
+					foreach ( $developers as $developer ) {
+						$levelDeveloper[] = get_user_meta( $developer->ID, $post->post_title, true );
+						$idDevelopers[]   = $developer->ID;
+					}
+					$objSkills['developer_level'] = $levelDeveloper;
+					$objSkills['developer_id']    = $idDevelopers;
+					$arraySkills[]                = $objSkills;
+				}
+				$objCat             += [ 'skills' => $arraySkills ];
+				$arrayObjCategory[] = $objCat;
 			}
-			$currentCategory   = [ $category->name => $arraySkill ];
-			$arrayCategories[] = $currentCategory;
 		}
-		$arrayReturn += [ 'categories_response' => $arrayCategories ];
-		echo( json_encode( $arrayReturn ) );
-		wp_die();
+		$arrayJson[] = $arrayDev;
+		$arrayJson[] = $arrayPosition;
+		$arrayJson[] = $arrayObjCategory;
+		$arrayJson[] = array( 'none', 'basic', 'good', 'excellent', 'expert' );
+		wp_send_json_success( $arrayJson );
 	}
+
 
 	public function processing_ajax() {
-
-		if ( ! update_user_meta( $_POST['developer'], $_POST['skill'], $_POST['level'] ) ) {
-			echo 'Пора включать панику, данные не обновились 0_o';
+		if ( ! update_user_meta( $_POST['id'], $_POST['skill'], $_POST['level'] ) ) {
+			wp_send_json_error();
 		}
-		wp_die();
+		wp_send_json_success();
 	}
 
 	public function add_position_developer() {
 		if ( ! update_user_meta( $_POST['developer'], 'position', $_POST['devposition'] ) ) {
-			echo 'Пора включать панику, данные не обновились 0_o';
+			wp_send_json_error();
 		}
-		echo( 'helllo' );
-		wp_die();
-	}
-
-	public function action_js() {
-		wp_enqueue_script( 'ajax_admin' );
+		wp_send_json_success();
 	}
 
 	public function register_script_admin() {
-		wp_register_style( 'matrix-style', plugins_url() . '/skillMatrix/assets/css/style.css' );
-		wp_register_script( 'ajax_admin', plugins_url() . '/skillMatrix/assets/js/ajax/ajaxscript.js', array( 'jquery' ) );
+		wp_enqueue_script( 'position-of-developer', um_url . 'assets/js/devposition.js' );
+		wp_register_style( 'chosen-css', um_url . 'assets/css/chosen.min.css' );
+		wp_register_style( 'matrix-style', um_url . 'assets/css/style.css' );
+		wp_register_script( 'chosen', um_url . 'assets/js/chosen.jquery.min.js' );
+		wp_register_script( 'ajax_admin', um_url . 'assets/js/ajax/ajax-template-admin.js', array(
+			'jquery',
+			'chosen',
+			'wp-util',
+		) );
+		wp_register_script( 'script', um_url . 'assets/js/script.js', array( 'jquery' ) );
 	}
 
 	public function enqueue_script_user() {
-		wp_enqueue_script( 'ajax_user', plugins_url() . '/skillMatrix/assets/js/ajax/ajaxscript_user.js', array( 'jquery' ) );
+		wp_enqueue_script( 'ajax_user', um_url . 'assets/js/ajax/ajaxscript_user.js', array( 'jquery' ) );
 		wp_localize_script( 'ajax_user', 'myPlugin', array(
 			'ajaxurl' => admin_url( 'admin-ajax.php' ),
 		) );
 	}
 
 	public function my_show_extra_profile_fields( $user ) { ?>
-        <h3>Введите должность:</h3>
+        <h3>Input position:</h3>
         <table class="form-table">
             <tr>
-                <th><label for="twitter">Должность</label></th>
+                <th><label for="position">Position</label></th>
                 <td>
-                    <input type="text" name="position" id="position"
-                           value="<?php echo esc_attr( get_the_author_meta( 'position', $user->ID ) ); ?>"
-                           class="regular-text"/><br/>
+					<?php $args = array(
+						'taxonomy'   => 'position',
+						'hide_empty' => false,
+						'orderby'    => 'name',
+						'order'      => 'ASC',
+					);
+					$terms      = (array) get_terms( $args ); ?>
+                    <select id="position" name="position">
+						<?php foreach ( $terms as $position ) { ?>
+                            <option <?php if ( get_the_author_meta( 'position', $user->ID ) == $position->name ) {
+								echo 'selected';
+							} ?> ><?php echo $position->name; ?>
+                            </option>
+						<?php } ?>
+                    </select>
                     <span class="description"></span>
                 </td>
             </tr>
         </table>
 	<?php }
 
+
 	public function update_user_meta( $user_id ) {
 		if ( ! current_user_can( 'edit_user', $user_id ) ) {
 			return false;
 		}
 		update_user_meta( $user_id, 'position', $_POST['position'] );
+
+		return true;
 	}
 
 	public function is_user_role( $role, $user_id = null ) {
@@ -166,9 +254,9 @@ class SkillMatrix {
 				'add_new'            => __( 'Add Skill' ),
 				'add_new_item'       => __( 'Add Skill' ),
 				'edit_item'          => __( 'Edit Skill' ),
-				'new_item'           => __( 'Новое ____' ),
+				'new_item'           => __( 'New Skill' ),
 				'view_item'          => __( 'View Skill' ),
-				'search_items'       => __( 'Искать ____' ),
+				'search_items'       => __( 'Search Skill' ),
 				'not_found'          => __( 'Not found' ),
 				'not_found_in_trash' => __( 'Not found in trash' ),
 				'parent_item_colon'  => __( '' ),
@@ -184,7 +272,7 @@ class SkillMatrix {
 			'show_in_nav_menus'   => null,
 			'show_in_rest'        => null,
 			'rest_base'           => null,
-			'menu_position'       => null,
+			'menu_position'       => 2,
 			'menu_icon'           => null,
 			'hierarchical'        => false,
 			'supports'            => array( 'title', 'editor' ),
@@ -197,7 +285,6 @@ class SkillMatrix {
 
 	public function create_taxonomy() {
 		register_taxonomy( 'skillcategory', array( 'skill' ), array(
-			'label'                 => '',
 			'labels'                => array(
 				'name'              => __( 'Category of skills' ),
 				'singular_name'     => __( 'Category of skill' ),
@@ -231,6 +318,30 @@ class SkillMatrix {
 			'show_in_quick_edit'    => null,
 		) );
 
+		register_taxonomy( 'position', '', array(
+			'label'                 => '',
+			'labels'                => array(
+				'name'              => __( 'Category of position' ),
+				'singular_name'     => __( 'Category of position' ),
+				'search_items'      => __( 'Search user position' ),
+				'all_items'         => __( 'All user position' ),
+				'view_item '        => __( 'View user position' ),
+				'parent_item'       => null,
+				'parent_item_colon' => null,
+				'edit_item'         => __( 'Edit user position' ),
+				'update_item'       => __( 'Update user position' ),
+				'add_new_item'      => __( 'Add New user position' ),
+				'new_item_name'     => __( 'New position' ),
+				'menu_name'         => __( 'position category' ),
+			),
+			'public'                => false,
+			'query_var'             => false,
+			'rewrite'               => false,
+			'hierarchical'          => true,
+			'show_ui'               => true,
+			'show_in_menu'          => false,
+			'update_count_callback' => 'user_tag_update_count_callback'
+		) );
 	}
 
 	public function add_role() {
@@ -238,7 +349,7 @@ class SkillMatrix {
 		add_role( 'developer', 'Developer',
 			array(
 				'read'          => false,
-				'publish_posts' => true
+				'publish_posts' => false
 			)
 		);
 
@@ -284,31 +395,22 @@ class SkillMatrix {
 			$this,
 			'skills_matrix_show'
 		), '', 4 );
-	}
+	} //use WP-Util for creating table
 
 	public function register_submenu() {
-		add_submenu_page( 'skills-matrix', 'Form user', 'Add user', 'manage_options',
-			'my-custom-submenu-page', array( $this, 'form_add_developer' ) );
+		add_submenu_page( 'skills-matrix', 'Form user', 'Add developer', 'manage_options',
+			'add-developer', array( $this, 'form_add_developer' ) );
+		add_submenu_page( 'skills-matrix', 'Add position', 'Add position of developer', 'manage_options', 'edit-tags.php?taxonomy=position', '' );
+		add_submenu_page( 'skills-matrix', 'Add skill', 'Add skill', 'manage_options',
+			'add-skill', array( $this, 'form_add_skill' ) );
+		add_submenu_page( 'skills-matrix', 'Add skill category', 'Add skill category', 'manage_options',
+			'add-skill-category', array( $this, 'form_add_category' ) );
 	}
 
-	public function form_add_developer() {
-		if ( ! current_user_can( 'publish_posts' ) ) {
-			return '';
-		}
-		wp_enqueue_style( 'matrix-style' );
-		if ( ! empty( $_POST['hs_insert_developer'] ) ) {
-			$post_data = array(
-				'post_type'    => 'post_type_name',
-				'post_title'   => wp_strip_all_tags( $_POST['post_title'] ),
-				'post_content' => $_POST['description'],
-				'tax_input'    => array( 'taxonomy' => [ $_POST['model'] ] ),
-				'post_status'  => 'draft',
-				'post_author'  => get_current_user_id()
-			);
-			// Вставляем запись в базу данных
-			if ( $post_data['post_title'] ) {
-				$post_id = wp_insert_post( $post_data );
-
+	public function add_category() {
+		if ( ! empty( $_POST['hs_insert_category'] ) ) {
+			if ( $_POST['category_name'] ) {
+				$post_id = wp_insert_term( $_POST['category_name'], 'skillcategory' );
 				if ( is_wp_error( $post_id ) ) {
 					wp_safe_redirect( add_query_arg( array( 'error' => '1' ), get_permalink() ) );
 					exit;
@@ -317,64 +419,216 @@ class SkillMatrix {
 					exit;
 				}
 			}
+			$_POST['none_category'] = 'not_exist';
 		}
-		$args  = array(
-			'taxonomy'   => 'taxonomy',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-			'order'      => 'ASC',
-		);
-		$terms = get_terms( $args );
+	}
+
+	public function form_add_category() {
+		if ( ! current_user_can( 'publish_posts' ) ) {
+			return;
+		}
+		wp_enqueue_script( 'script' );
+		wp_enqueue_style( 'matrix-style' );
 		?>
         <div class="developerForm">
-            <form method="post" action="">
-                    <h3 style="color:white">Add developer</h3>
-                <?php if ( ! empty( $_GET['successfull'] ) ) { ?>
-                    <span style="color:green"><?php _e( 'Successfully Added' ) ?></span>
-				<?php } elseif ( ! empty( $_GET['error'] ) ) { ?>
-                    <span style="color:red"><?php _e( 'Error' ) ?></span>
+            <form class="add_developer" method="post" action="">
+                <h3><?php _e( 'Add skill category' ) ?></h3>
+				<?php if ( ! empty( $_GET['error'] ) ) { ?>
+                    <span class="span_error" style="color:red"><?php _e( 'Error' ) ?></span>
 				<?php } ?>
-                <div class="add_developer_element">
-                    <label for="nameDev">Username</label>
-                    <input type="text" id="nameDev">
+                <div class="add_category_skill">
+                    <label for="category"><?php _e( 'Category' ) ?></label>
+                    <input type="text" name="category_name" id="category">
+                    <div class="error_input <?= $_POST['none_category'] ?>">
+                        <label></label>
+                        <span style="clear: both; overflow: hidden; color:red; "><?php _e( 'Input category name' ) ?></span>
+                    </div>
                 </div>
-                <div class="add_developer_element">
-                    <label for="emailDev">Email</label>
-                    <input type="text" id="emailDev">
+                <div class="add_category_skill">
+                    <label></label>
+                    <button class="button button-primary" type="submit"><?php _e( 'Add' ) ?></button>
+                    <button class="button" type="reset"><?php _e( 'Reset' ) ?></button>
                 </div>
-                <div class="add_developer_element">
-                    <label for="firstNameDev">First Name</label>
-                    <input type="text" id="firstNameDev">
-                </div>
-                <div class="add_developer_element">
-                    <label for="lastNameDev">Last Name</label>
-                    <input type="text" id="lastNameDev">
-                </div>
-                <div class="add_developer_element">
-                    <label for="passwordDev">Password</label>
-                    <input type="password" id="passwordDev">
-                    <button class="showPass" type="button">&#128065;</button>
+                <input type="hidden" name="hs_insert_category" value="1"/>
+            </form>
+        </div>
+		<?php
+	}
+
+
+	public function add_skill() {
+		if ( ! empty( $_POST['hs_insert_skill'] ) ) {
+			if ( $_POST['post_name'] ) {
+				$post    = array(
+					'post_type'   => 'skill',
+					'post_title'  => $_POST['post_name'],
+					'tags_input'  => array( $_POST['post_term'] ),
+					'post_status' => 'publish'
+				);
+				$post_id = wp_insert_post( $post, true );
+				if ( is_wp_error( $post_id ) ) {
+					wp_safe_redirect( add_query_arg( array( 'error' => '1' ), get_permalink() ) );
+					exit;
+				} else {
+					wp_set_post_terms( $post_id, $_POST['post_term'], 'skillcategory', true );
+					wp_safe_redirect( add_query_arg( array( 'successfull' => '1' ), get_permalink() ) );
+					exit;
+				}
+			}
+			$_POST['none_post'] = 'not_exist';
+		}
+	}
+
+	public function form_add_skill() {
+		if ( ! current_user_can( 'publish_posts' ) ) {
+			return;
+		}
+		wp_enqueue_script( 'script' );
+		wp_enqueue_style( 'matrix-style' );
+		?>
+        <div class="developerForm">
+            <form class="add_developer" method="post" action="">
+                <h3><?php _e( 'Add skill' ) ?></h3>
+				<?php if ( ! empty( $_GET['error'] ) ) { ?>
+                    <span class="span_error" style="color:red"><?php _e( 'Error' ) ?></span>
+				<?php } ?>
+                <div class="add_skill_element">
+                    <label for="skill"><?php _e( 'Skill' ) ?></label>
+                    <input type="text" name="post_name" id="skill">
+                    <div class="error_input <?= $_POST['none_post'] ?>">
+                        <label></label>
+                        <span style="clear: both; overflow: hidden; color:red; "><?php _e( 'Input post name' ) ?></span>
+                    </div>
                 </div>
                 <div>
-                    <label>Раскрывающийся список</label>
-                    <select>
-                        <option>Lagouste</option>
-                        <option>Soubcart</option>
-                        <option>Aboutso</option>
+                    <label for="category_skill"> <?php _e( 'Category' ) ?></label>
+					<?php $args = array(
+						'taxonomy'   => 'skillcategory',
+						'hide_empty' => false,
+					);
+					$terms      = get_terms( $args ); ?>
+                    <select name="post_term" id="category_skill">
+						<?php foreach ( $terms as $term ) { ?>
+                            <option value="<?php echo $term->name; ?>"><?php echo $term->name ?></option>
+						<?php } ?>
                     </select>
                 </div>
                 <div>
-                    <label>Кнопка</label>
-                    <button class="send" type="submit">Отправить</button>
-                    <button class="send" type="reset">Сбросить</button>
+                    <label></label>
+                    <button class="button button-primary" type="submit"><?php _e( 'Add' ) ?></button>
+                    <button class="button" type="reset"><?php _e( 'Reset' ) ?></button>
                 </div>
+                <input type="hidden" name="hs_insert_skill" value="1"/>
+            </form>
+        </div>
+		<?php
+	}
+
+	public function add_developer() {
+		if ( ! empty( $_POST['hs_insert_developer'] ) ) {
+			$user_data = array(
+				'user_pass'       => ! empty( $_POST['password'] ) ? $_POST['password'] : '',
+				'user_login'      => ! empty( $_POST['user_name'] ) ? $_POST['user_name'] : '',
+				'user_nicename'   => '',
+				'user_url'        => '',
+				'user_email'      => ! empty( $_POST['email'] ) ? $_POST['email'] : '',
+				'first_name'      => ! empty( $_POST['first_name'] ) ? $_POST['first_name'] : '',
+				'last_name'       => ! empty( $_POST['last_name'] ) ? $_POST['last_name'] : '',
+				'rich_editing'    => 'true',
+				'user_registered' => '',
+				'role'            => 'developer'
+			);
+			if ( $user_data['user_login'] && $user_data['user_pass'] ) {
+				$post_id = wp_insert_user( $user_data );
+				if ( is_wp_error( $post_id ) ) {
+					wp_safe_redirect( add_query_arg( array( 'error' => '1' ), get_permalink() ) );
+					exit;
+				} else {
+					wp_safe_redirect( add_query_arg( array( 'successfull' => '1' ), get_permalink() ) );
+					add_user_meta( $post_id, 'position', $_POST['role'] );
+					exit;
+				}
+			}
+			$_POST['password'] = 'not_exist';
+			$_POST['user']     = empty( $_POST['user_name'] ) ? 'not_exist' : '';
+		}
+	}
+
+	public function form_add_developer() {
+		if ( ! current_user_can( 'publish_posts' ) ) {
+			return;
+		}
+		wp_enqueue_script( 'script' );
+		wp_enqueue_style( 'matrix-style' );
+		?>
+        <div class="developerForm">
+            <form class="add_developer" method="post" action="">
+                <h3><?php _e( 'Add developer' ) ?></h3>
+
+				<?php if ( ! empty( $_GET['error'] ) ) { ?>
+                    <span class="span_error" style="color:red"><?php _e( 'Error' ) ?></span>
+				<?php } ?>
+                <div class="add_developer_element">
+                    <label for="nameDev"><?php _e( 'Username' ) ?></label>
+                    <input type="text" name="user_name" id="nameDev"
+                           value="<?php echo isset( $_POST['user_name'] ) ? $_POST['user_name'] : '' ?>">
+                    <div class="error_input <?= $_POST['user'] ?>">
+                        <label></label>
+                        <span style="clear: both; overflow: hidden; color:red; "><?php _e( 'Input username' ) ?></span>
+                    </div>
+                </div>
+                <div class=" add_developer_element">
+                    <label for="emailDev"><?php _e( 'Email' ) ?></label>
+                    <input type="text" name="email" id="emailDev"
+                           value="<?php echo isset( $_POST['email'] ) ? $_POST['email'] : '' ?>">
+                </div>
+                <div class="add_developer_element">
+                    <label for="firstNameDev"><?php _e( 'First Name' ) ?></label>
+                    <input type="text" name="first_name" id="firstNameDev"
+                           value="<?php echo isset( $_POST['first_name'] ) ? $_POST['first_name'] : '' ?>">
+                </div>
+                <div class="add_developer_element">
+                    <label for="lastNameDev"><?php _e( 'Last Name' ) ?></label>
+                    <input type="text" name="last_name" id="lastNameDev"
+                           value="<?php echo isset( $_POST['last_name'] ) ? $_POST['last_name'] : '' ?>">
+                </div>
+                <div class="add_developer_element">
+                    <label for="passwordDev"><?php _e( 'Password' ) ?></label>
+                    <input type="password" name="password" id="passwordDev">
+                    <button class="showPass button" type="button" style="outline:none; height: 25px "><span
+                                class="show_pass_text"><?php _e( 'show' ) ?></span></button>
+                    <div class="error_input <?= $_POST['password'] ?>">
+                        <label></label>
+                        <span style="clear: both; overflow: hidden; color:red; "><?php _e( 'Input password' ) ?></span>
+                    </div>
+                </div>
+                <div>
+                    <label for="roleDev"> <?php _e( 'Position' ) ?></label>
+					<?php $args = array(
+						'taxonomy'   => 'position',
+						'hide_empty' => false,
+						'orderby'    => 'name',
+						'order'      => 'ASC',
+					);
+					$terms      = (array) get_terms( $args ); ?>
+                    <select name="role" id="roleDev">
+						<?php foreach ( $terms as $term ) { ?>
+                            <option value="<?php echo $term->name; ?>"><?php echo $term->name ?></option>
+						<?php } ?>
+                    </select>
+                </div>
+                <div>
+                    <label></label>
+                    <button class="button button-primary" type="submit"><?php _e( 'Add' ) ?></button>
+                    <button class="button" type="reset"><?php _e( 'Reset' ) ?></button>
+                </div>
+                <input type="hidden" name="hs_insert_developer" value="1"/>
             </form>
         </div>
 		<?php
 	}
 
 	public function register_show_skill() {
-
 		$current_user = wp_get_current_user();
 		if ( $this->is_user_role( 'developer', $current_user->ID ) ) {
 			$args  = array(
@@ -448,198 +702,160 @@ class SkillMatrix {
                     </tr>
 					<?php
 				} ?>
-
-
             </table>
 			<?php
 		}
 	}
 
 	public function show_filters() {
-		$allPosts = get_posts( array(
-			'post_type'      => 'skill',
-			'posts_per_page' => - 1
-		) ); ?>
-        <h1>Фильтры:</h1>
-        <p>
+		$allDevelopers = get_users( array( 'role' => 'developer' ) );
+		if ( ! count( (array) $allDevelopers ) ) {
+			echo '<h3>Please add developers, skill category and skill</h3>';
+		} else {
+			; ?>
+            <h1>Filters:</h1>
 			<?php
 			?>
-        </p>
-        <div class="div-filter" style="overflow: hidden; padding-top: 10px; margin-bottom: 20px;">
-            <div class="filter">
-                <label for="all_skills_developers"
-                       style="display: block;font-size: 15px; font-style: italic">Skills </label>
-                <select id="all_skills_developers" style="margin-bottom: 10px;">
-					<?php foreach ( $allPosts as $post ) { ?>
-                        <option value="<?= $post->post_title ?>"><?= $post->post_title ?></option>
-					<?php } ?>
-                </select>
+
+            <div class="div-filter" style=" padding-top: 10px; margin-bottom: 20px;">
+
+				<?php
+				$args     = array(
+					'taxonomy'   => 'skillcategory',
+					'hide_empty' => false,
+					'orderby'    => 'name',
+					'order'      => 'ASC',
+				);
+				$allTerms = get_terms( $args );
+				?>
+
+                <div class="filter">
+                    <label for="skill_categories"
+                           style="display: block;font-size: 15px; font-style: italic">Categories</label>
+                    <select id="skill_categories" style="margin-bottom: 10px;">
+                        <option value="">Select Category</option>
+						<?php foreach ( $allTerms as $term ) { ?>
+                            <option value="<?= $term->name ?>"><?= $term->name ?></option>
+						<?php } ?>
+                    </select>
+                </div>
+
+                <div class="filter skills-of-term">
+
+                </div>
+
+                <div class="filter">
+                    <label for="all_developers"
+                           style="display: block;font-size: 15px; font-style: italic">Developers</label>
+                    <select multiple="multiple" id="all_developers" style="margin-bottom: 10px; position:absolute;">
+						<?php foreach ( $allDevelopers as $developer ) { ?>
+                            <option value="<?= $developer->ID ?>"><?= $developer->display_name ?></option>
+						<?php } ?>
+                    </select>
+                </div>
+				<?php
+				$args  = array(
+					'taxonomy'   => 'position',
+					'hide_empty' => false,
+					'orderby'    => 'name',
+					'order'      => 'ASC',
+				);
+				$terms = (array) get_terms( $args );
+				?>
+                <div class="filter">
+                    <label for="positions"
+                           style="display: block;font-size: 15px; font-style: italic">Position</label>
+                    <select id="positions" style="margin-bottom: 10px;">
+                        <option value="">Select position</option>
+						<?php foreach ( $terms as $position ) { ?>
+                            <option value="<?= $position->name ?>"><?= $position->name ?></option>
+						<?php } ?>
+                    </select>
+                </div>
             </div>
 
 			<?php
-			$args     = array(
-				'taxonomy'   => 'skillcategory',
-				'hide_empty' => false,
-				'orderby'    => 'name',
-				'order'      => 'ASC',
-			);
-			$allTerms = get_terms( $args );
-			?>
-
-            <div class="filter">
-                <label for="skill_categories"
-                       style="display: block;font-size: 15px; font-style: italic">Categories</label>
-                <select id="skill_categories" style="margin-bottom: 10px;">
-					<?php foreach ( $allTerms as $term ) { ?>
-                        <option value="<?= $term->name ?>"><?= $term->name ?></option>
-					<?php } ?>
-                </select>
-            </div>
-
-			<?php
-			$allDevelopers = get_users( array( 'role' => 'developer' ) );
-			?>
-
-            <div class="filter">
-                <label for="all_developers"
-                       style="display: block;font-size: 15px; font-style: italic">Developers</label>
-                <select multiple="multiple" id="all_developers" style="margin-bottom: 10px;">
-					<?php foreach ( $allDevelopers as $developer ) { ?>
-                        <option value="<?= $developer->ID ?>"><?= $developer->user_login ?></option>
-					<?php } ?>
-                </select>
-            </div>
-            <div class="filter">
-                <button id="button_developers" style="margin-top: 10px; margin-right: 10px; width:50px">Show Dev
-                </button>
-            </div>
-			<?php
-			$positons = [];
-			foreach ( $allDevelopers as $developer ) {
-				$positons[] = get_user_meta( $developer->ID, 'position', true );
-			}
-			?>
-            <div class="filterz" style="clear: right">
-                <label for="positions"
-                       style="display: block;font-size: 15px; font-style: italic">Position</label>
-                <select id="positions" style="margin-bottom: 10px;">
-					<?php foreach ( $positons as $position ) { ?>
-                        <option value="<?= $position ?>"><?= $position ?></option>
-					<?php } ?>
-                </select>
-            </div>
-
-            <div class="filter">
-                <button class="refresh" style="width:50px">Drop filter</button>
-            </div>
-        </div>
-
-		<?php
+		}
 	}
 
 	public function skills_matrix_show() {
+		wp_enqueue_script( 'ajax_admin' );
 		wp_enqueue_style( 'matrix-style' );
+		wp_enqueue_style( 'chosen-css' );
 		$this->set_default_user_meta();
 		$this->show_filters();
-		$args  = array(
-			'taxonomy'   => 'skillcategory',
-			'hide_empty' => false,
-			'orderby'    => 'name',
-			'order'      => 'ASC',
-		);
-		$terms = get_terms( $args );
 		?>
-        <table class="matrix">
-			<?php
-			$developers = get_users( array( 'role' => 'developer' ) ); //all developers
-			?>
-            <tr>
-                <th class="header-name">Skill Category</th>
-                <th class="header-name">Skill</th>
-				<?php
-				$arrayDev = [];
-				foreach ( $developers as $developer ) {
-					echo '<th>';
-					echo( $developer->user_login );
-					echo '</th>';
-					$arrayDev[] = $developer->ID;
-				}
-				?>
-            </tr>
-            <tr>
-                <td>Position</td>
-                <td></td>
-				<?php
-				for ( $i = 0; $i < count( $arrayDev ); $i ++ ) {   //add position of developer
-					?>
-                    <td><?php if ( ! empty( $meta = get_user_meta( $arrayDev[ $i ], 'position', true ) ) ) {
-							echo $meta;
-						} else {
-							?>
-                            <input type="text" name="position" data-developer="<?= $arrayDev[ $i ] ?>"
-                                   style="width:70% ; float:left">
-                            <button class="button_position" data-developer="<?= $arrayDev[ $i ] ?>"
-                                    style="width:20%; font-size:8px; padding-left:1px">&#10004;
-                            </button>
-							<?php ;
-						} ?></td> <?php
-				}
-				?>
-            </tr>
-			<?php
-			$arrayLevel = [ 'none', 'basic', 'good', 'excellent', 'expert', 'JESUS' ]; //array of users level
-			foreach ( $terms as $term ) {
-				$loop = get_posts( array(
-					'tax_query'      => array(
-						array(
-							'taxonomy' => 'skillcategory',
-							'field'    => 'name',
-							'terms'    => $term->name
-						)
-					),
-					'post_type'      => 'skill',
-					'posts_per_page' => - 1
-				) );
 
-				?>
+        <div class="preloader-ajax" style="">
+            <img src="<?php echo um_url ?>/img/Spinner-1.6s-200px.svg" height="80px">
+        </div>
+
+        <script type="text/html" id="tmpl-my-template">
+            <table class="bordered">
                 <tr>
-                    <td rowspan="<?php echo $row = ( count( $loop ) ) ? count( $loop ) : '1' ?>"> <?php echo( $term->name ) ?> </td>
-
-					<?php
-					$k = 0;
-					if ( count( $loop ) ) {
-						foreach ( $loop as $post ) {
-							if ( $k ) {
-								echo '<tr>';
-							}
-							echo '<td>';
-							echo $post->post_title;
-							echo '</td>';
-							for ( $j = 0; $j < count( $arrayDev ); $j ++ ) { ?>
-                                <td>
-                                    <select class="level_developer" data-skill="<?= $post->post_title ?>"
-                                            data-developer="<?= $arrayDev[ $j ] ?>" name="level">
-										<?php foreach ( $arrayLevel as $level ) { ?>
-                                            <option value="<?= $level ?>" <?php if ( $level == get_user_meta( $arrayDev[ $j ], $post->post_title, true ) ) {
-												echo 'selected';
-											} ?>>
-												<?= $level ?></option>
-										<?php } ?>
-                                    </select>
-                                </td>
-
-							<?php }
-							if ( $k ) {
-								echo '</tr>';
-							}
-							$k ++; //output <td>
-						}
-					}
-					?>
+                    <th>Skill Category</th>
+                    <th>Skill</th>
+                    <# data.developers.forEach(function(item,i,arr){#>
+                    <th>{{{item}}}</th>
+                    <# }) #>
                 </tr>
-				<?php
-			} ?>
-        </table>
+                <tr>
+                    <td>Position</td>
+                    <td></td>
+                    <# data.positions.forEach(function(item,i,arr){#>
+                    <td>{{{item}}}</td>
+                    <# }) #>
+                </tr>
+                <#data.arrayObj.forEach(function(item,i,arr){
+                var key = true;
+                let count= item.skills.length;
+                #>
+                <tr>
+                    <td rowspan="{{{count}}}">
+                        {{{ item.category }}}
+                    </td>
+                    <# if(key){ #>
+                    <td>
+                        <# var skillname=item.skills[0].skill_name; #>
+                        {{{ skillname }}}
+                    </td>
+                    <# item.skills[0].developer_level.forEach(function(level,i,arr){ #>
+                    <td>
+                        <select class="level_developer" data-skill="{{{skillname}}}"
+                                data-developer="{{{item.skills[0].developer_id[i]}}}" name="level">
+                            <# data.skill_level.forEach(function(all_level,i,arr){#>
+                            <option
+                            <# if(all_level==level){ #>{{{'selected'}}} <# } #> >{{{all_level}}}</option>
+                            <# }) #>
+                        </select>
+                    </td>
+                    <# }) #>
+                    <# key=false;
+                    } #>
+                </tr>
+                <# for (var j = 1; j < item.skills.length; j++) { #>
+                <tr>
+                    <# var skillname=item.skills[j].skill_name; #>
+                    <td>{{{skillname}}}</td>
+                    <# item.skills[j].developer_level.forEach(function(skill,i,arr){ #>
+                    <td>
+                        <select class="level_developer" data-skill="{{{skillname}}}"
+                                data-developer="{{{item.skills[j].developer_id[i]}}}" name="level">
+                            <# data.skill_level.forEach(function(all_level,i,arr){#>
+                            <option
+                            <# if(all_level==skill){ #>{{{'selected'}}} <# } #> >{{{all_level}}}</option>
+                            <# }) #>
+                        </select>
+                    </td>
+                    <# }) #>
+                </tr>
+                <# }
+                }) #>
+            </table>
+        </script>
+
+        <div class="my-element"></div> <!--insert template -->
+
 		<?php
 	}
 
