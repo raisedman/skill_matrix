@@ -1,5 +1,5 @@
 jQuery(document).ready(function ($) {
-  var key = true
+  var key = true;
   $('button.showPass').click(function () {
 
     if (key) {
@@ -9,7 +9,7 @@ jQuery(document).ready(function ($) {
     }
     else {
       $('.show_pass_text').text('Show');
-      $('#passwordDev').attr('type', 'password')
+      $('#passwordDev').attr('type', 'password');
       key = true
     }
   })

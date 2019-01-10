@@ -27,7 +27,6 @@ class SkillMatrix {
 		add_action( 'admin_menu', array( $this, 'register_submenu' ) );
 		add_action( 'wp_ajax_changelevel', array( $this, 'processing_ajax' ) );
 		add_action( 'wp_ajax_addposition', array( $this, 'add_position_developer' ) );
-		add_action( 'wp_ajax_developers', array( $this, 'send_all_developers' ) );
 		add_action( 'wp_ajax_categories', array( $this, 'send_category' ) );
 		add_action( 'wp_ajax_senddev', array( $this, 'send_data_dev' ) );
 		add_shortcode( 'show_skill', array( $this, 'register_show_skill' ) );
@@ -179,6 +178,9 @@ class SkillMatrix {
 
 	public function register_script_admin() {
 		wp_enqueue_script( 'position-of-developer', um_url . 'assets/js/devposition.js' );
+		wp_localize_script('position-of-developer', 'myPlugin',array(
+		        'adminUrl'=> admin_url(),
+        ));
 		wp_register_style( 'chosen-css', um_url . 'assets/css/chosen.min.css' );
 		wp_register_style( 'matrix-style', um_url . 'assets/css/style.css' );
 		wp_register_script( 'chosen', um_url . 'assets/js/chosen.jquery.min.js' );
@@ -365,8 +367,6 @@ class SkillMatrix {
 				'manage_categories'    => true, // Allows user to manage post categories
 				'publish_posts'        => true, // Allows the user to publish, otherwise posts stays in draft mode
 				'edit_themes'          => true, // false denies this capability. User can’t edit your theme
-				'install_plugins'      => true, // User cant add new plugins
-				'update_plugin'        => true,
 				'edit_users'           => true,
 				'create_users'         => true,
 				'remove_users'         => true,
